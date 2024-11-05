@@ -110,7 +110,26 @@ jobs:
           # Register the task definition
           aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json
 
-      # Step 10: Create ECS Cluster if not exists
+      # Step 10: Check for Subnets
+      - name: Check for Subnets
+        id: check-subnet
+        run: |
+          SUBNET_OUTPUT=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=YOUR_VPC_ID" --output json 2>/dev/null)
+          if [ "$(echo $SUBNET_OUTPUT | jq -r '.Subnets | length')" -eq 0 ]; then
+            echo "No existing subnets found. Creating a new subnet..."
+            NEW_SUBNET_OUTPUT=$(aws ec2 create-subnet --vpc-id YOUR_VPC_ID --cidr-block YOUR_CIDR_BLOCK --availability-zone YOUR_AVAILABILITY_ZONE)
+            echo "New subnet created."
+            NEW_SUBNET_ID=$(echo $NEW_SUBNET_OUTPUT | jq -r '.Subnet.SubnetId')
+            echo "New Subnet ID: $NEW_SUBNET_ID"
+            echo "SUBNET_ID=$NEW_SUBNET_ID" >> $GITHUB_ENV
+          else
+            echo "Existing subnets found."
+            EXISTING_SUBNET_ID=$(echo $SUBNET_OUTPUT | jq -r '.Subnets[0].SubnetId')
+            echo "Using existing Subnet ID: $EXISTING_SUBNET_ID"
+            echo "SUBNET_ID=$EXISTING_SUBNET_ID" >> $GITHUB_ENV
+          fi
+
+      # Step 11: Check if ECS Cluster Exists and Create if Necessary
       - name: Create ECS Cluster if not exists
         id: create-cluster
         run: |
@@ -123,7 +142,7 @@ jobs:
             echo "Cluster exists."
           fi
 
-      # Step 11: Check cluster status after creation
+      # Step 12: Check Cluster Status after Creation
       - name: Check Cluster Status
         id: check-cluster
         run: |
@@ -136,19 +155,19 @@ jobs:
             exit 1  # Exit the workflow if the cluster is not active
           fi
 
-      # Step 12: Check if ECS Service Exists
+      # Step 13: Check if ECS Service Exists
       - name: Check if ECS Service Exists
         id: check-service
         run: |
           SERVICE_OUTPUT=$(aws ecs describe-services --cluster my-cluster --services cloud-service --output json 2>/dev/null)
           if [ "$(echo $SERVICE_OUTPUT | jq -r '.services | length')" -eq 0 ]; then
             echo "Service 'cloud-service' does not exist. Creating it..."
-            aws ecs create-service --cluster my-cluster --service-name cloud-service --task-definition cloud-service --desired-count 1 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxxxx],securityGroups=[sg-xxxxxxxx],assignPublicIp='ENABLED'}"
+            aws ecs create-service --cluster my-cluster --service-name cloud-service --task-definition cloud-service --desired-count 1 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID }}],securityGroups=[sg-xxxxxxxx],assignPublicIp='ENABLED'}"
           else
             echo "Service 'cloud-service' exists."
           fi
 
-      # Step 13: Update ECS Service
+      # Step 14: Update ECS Service
       - name: Update ECS Service
         run: |
           echo "Updating ECS service..."
