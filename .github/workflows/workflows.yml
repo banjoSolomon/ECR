@@ -136,8 +136,20 @@ jobs:
             exit 1  # Exit the workflow if the cluster is not active
           fi
 
-      # Step 12: Update ECS Service
+      # Step 12: Check if ECS Service Exists
+      - name: Check if ECS Service Exists
+        id: check-service
+        run: |
+          SERVICE_OUTPUT=$(aws ecs describe-services --cluster my-cluster --services cloud-service --output json 2>/dev/null)
+          if [ "$(echo $SERVICE_OUTPUT | jq -r '.services | length')" -eq 0 ]; then
+            echo "Service 'cloud-service' does not exist. Creating it..."
+            aws ecs create-service --cluster my-cluster --service-name cloud-service --task-definition cloud-service --desired-count 1 --launch-type FARGATE
+          else
+            echo "Service 'cloud-service' exists."
+          fi
+
+      # Step 13: Update ECS Service
       - name: Update ECS Service
         run: |
           echo "Updating ECS service..."
-          aws ecs update-service --cluster my-cluster --service cloud-service --force-new-deployment || echo "Failed to update service."
+          aws ecs update-service --cluster my-cluster --service cloud-service --task-definition cloud-service --force-new-deployment || echo "Failed to update service."
