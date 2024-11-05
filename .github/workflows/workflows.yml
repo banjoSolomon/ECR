@@ -106,9 +106,10 @@ jobs:
       - name: Create ECS Cluster if not exists
         id: create-cluster
         run: |
-          aws ecs describe-clusters --clusters "my-cluster" || aws ecs create-cluster --cluster-name "my-cluster"
+          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" --output json 2>/dev/null || aws ecs create-cluster --cluster-name "my-cluster" --output json)
+          echo "Cluster output: $CLUSTER_OUTPUT"
 
-      # Check cluster status before updating service
+      # Check cluster status after creation
       - name: Check Cluster Status
         id: check-cluster
         run: |
