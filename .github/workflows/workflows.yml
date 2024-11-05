@@ -106,7 +106,7 @@ jobs:
       - name: Create ECS Cluster if not exists
         id: create-cluster
         run: |
-          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" --output json 2>/dev/null || aws ecs create-cluster --cluster-name "my-cluster" --output json)
+          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" --output json || aws ecs create-cluster --cluster-name "my-cluster" --output json)
           echo "Cluster output: $CLUSTER_OUTPUT"
 
       # Check cluster status after creation
@@ -115,7 +115,9 @@ jobs:
         run: |
           CLUSTER_STATUS=$(aws ecs describe-clusters --clusters "my-cluster" --query "clusters[0].status" --output text)
           echo "Cluster status: $CLUSTER_STATUS"
-          if [[ "$CLUSTER_STATUS" != "ACTIVE" ]]; then
+          if [[ "$CLUSTER_STATUS" == "ACTIVE" ]]; then
+            echo "The cluster is active."
+          else
             echo "The cluster is not active or does not exist. Current status: $CLUSTER_STATUS"
             exit 1  # Exit the workflow if the cluster is not active
           fi
