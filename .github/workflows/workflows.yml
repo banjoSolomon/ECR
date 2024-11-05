@@ -98,7 +98,7 @@ jobs:
             "taskRoleArn": "${{ secrets.ECS_TASK_ROLE_ARN }}"
           }
           EOF
-
+          
           # Register the task definition
           aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json
 
@@ -106,9 +106,8 @@ jobs:
       - name: Create ECS Cluster if not exists
         id: create-cluster
         run: |
-          aws ecs describe-clusters --clusters "my-cluster" || \
-          aws ecs create-cluster --cluster-name "my-cluster"
-          echo "Cluster created or already exists."
+          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" || aws ecs create-cluster --cluster-name "my-cluster")
+          echo "Cluster output: $CLUSTER_OUTPUT"
 
       # Check cluster status before updating service
       - name: Check Cluster Status
@@ -116,10 +115,11 @@ jobs:
         run: |
           CLUSTER_STATUS=$(aws ecs describe-clusters --clusters "my-cluster" --query "clusters[0].status" --output text)
           echo "Cluster status: $CLUSTER_STATUS"
+          if [ "$CLUSTER_STATUS" == "None" ]; then
+            echo "The cluster was not found or has not been created properly."
+          fi
           echo "CLUSTER_STATUS=$CLUSTER_STATUS" >> $GITHUB_ENV
 
-      # Update ECS Service only if the cluster exists
       - name: Update ECS Service
-        if: env.CLUSTER_STATUS == 'ACTIVE'
         run: |
           aws ecs update-service --cluster my-cluster --service cloud-service --force-new-deployment || echo "Failed to update service."
