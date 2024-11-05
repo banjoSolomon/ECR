@@ -106,7 +106,7 @@ jobs:
       - name: Create ECS Cluster if not exists
         id: create-cluster
         run: |
-          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" || aws ecs create-cluster --cluster-name "my-cluster")
+          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" || aws ecs create-cluster --cluster-name "my-cluster" --output json)
           echo "Cluster output: $CLUSTER_OUTPUT"
 
       # Check cluster status before updating service
@@ -115,11 +115,15 @@ jobs:
         run: |
           CLUSTER_STATUS=$(aws ecs describe-clusters --clusters "my-cluster" --query "clusters[0].status" --output text)
           echo "Cluster status: $CLUSTER_STATUS"
-          if [ "$CLUSTER_STATUS" == "None" ]; then
+          if [[ "$CLUSTER_STATUS" == "ACTIVE" ]]; then
+            echo "Cluster is active."
+          else
             echo "The cluster was not found or has not been created properly."
+            exit 1  # Exit the workflow if cluster is not active
           fi
           echo "CLUSTER_STATUS=$CLUSTER_STATUS" >> $GITHUB_ENV
 
       - name: Update ECS Service
         run: |
+          echo "Updating ECS service..."
           aws ecs update-service --cluster my-cluster --service cloud-service --force-new-deployment || echo "Failed to update service."
