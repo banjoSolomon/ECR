@@ -104,9 +104,11 @@ jobs:
 
       # Create ECS Cluster if not exists
       - name: Create ECS Cluster if not exists
+        id: create-cluster
         run: |
           aws ecs describe-clusters --clusters "my-cluster" || \
           aws ecs create-cluster --cluster-name "my-cluster"
+          echo "Cluster created or already exists."
 
       # Check cluster status before updating service
       - name: Check Cluster Status
