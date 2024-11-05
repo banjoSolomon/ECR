@@ -117,7 +117,7 @@ jobs:
           SUBNET_OUTPUT=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=YOUR_VPC_ID" --output json 2>/dev/null)
           if [ "$(echo $SUBNET_OUTPUT | jq -r '.Subnets | length')" -eq 0 ]; then
             echo "No existing subnets found. Creating a new subnet..."
-            NEW_SUBNET_OUTPUT=$(aws ec2 create-subnet --vpc-id YOUR_VPC_ID --cidr-block YOUR_CIDR_BLOCK --availability-zone YOUR_AVAILABILITY_ZONE)
+            NEW_SUBNET_OUTPUT=$(aws ec2 create-subnet --vpc-id YOUR_VPC_ID --cidr-block YOUR_CIDR_BLOCK --availability-zone us-east-1a)
             echo "New subnet created."
             NEW_SUBNET_ID=$(echo $NEW_SUBNET_OUTPUT | jq -r '.Subnet.SubnetId')
             echo "New Subnet ID: $NEW_SUBNET_ID"
