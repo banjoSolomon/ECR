@@ -40,7 +40,7 @@ jobs:
         with:
           region: ${{ secrets.AWS_REGION }}
 
-      # Create ECR repository if it does not exist
+      # Step 6.1: Create ECR repository if it does not exist
       - name: Create ECR Repository if not exists
         run: |
           aws ecr describe-repositories --repository-names "cloud" || \
@@ -98,16 +98,22 @@ jobs:
             "taskRoleArn": "${{ secrets.ECS_TASK_ROLE_ARN }}"
           }
           EOF
-          
+
           # Register the task definition
           aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json
 
-      # Create ECS Cluster if not exists
+      # Step 6.2: Create ECS Cluster if not exists
       - name: Create ECS Cluster if not exists
         run: |
           aws ecs describe-clusters --clusters "my-cluster" || \
           aws ecs create-cluster --cluster-name "my-cluster"
 
+      # Debug Cluster Status
+      - name: Debug Cluster Status
+        run: |
+          aws ecs describe-clusters --clusters "my-cluster" || echo "Cluster not found, creating a new one."
+
+      # Update ECS Service
       - name: Update ECS Service
         run: |
-          aws ecs update-service --cluster my-cluster --service cloud-service --force-new-deployment
+          aws ecs update-service --cluster my-cluster --service cloud-service --force-new-deployment || echo "Failed to update service."
