@@ -143,7 +143,7 @@ jobs:
           SERVICE_OUTPUT=$(aws ecs describe-services --cluster my-cluster --services cloud-service --output json 2>/dev/null)
           if [ "$(echo $SERVICE_OUTPUT | jq -r '.services | length')" -eq 0 ]; then
             echo "Service 'cloud-service' does not exist. Creating it..."
-            aws ecs create-service --cluster my-cluster --service-name cloud-service --task-definition cloud-service --desired-count 1 --launch-type FARGATE
+            aws ecs create-service --cluster my-cluster --service-name cloud-service --task-definition cloud-service --desired-count 1 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxxxx],securityGroups=[sg-xxxxxxxx],assignPublicIp='ENABLED'}"
           else
             echo "Service 'cloud-service' exists."
           fi
