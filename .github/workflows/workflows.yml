@@ -40,7 +40,7 @@ jobs:
         with:
           region: ${{ secrets.AWS_REGION }}
 
-      # Step 6.1: Create ECR repository if it does not exist
+      # Create ECR repository if it does not exist
       - name: Create ECR Repository if not exists
         run: |
           aws ecr describe-repositories --repository-names "cloud" || \
@@ -102,18 +102,22 @@ jobs:
           # Register the task definition
           aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json
 
-      # Step 6.2: Create ECS Cluster if not exists
+      # Create ECS Cluster if not exists
       - name: Create ECS Cluster if not exists
         run: |
           aws ecs describe-clusters --clusters "my-cluster" || \
           aws ecs create-cluster --cluster-name "my-cluster"
 
-      # Debug Cluster Status
-      - name: Debug Cluster Status
+      # Check cluster status before updating service
+      - name: Check Cluster Status
+        id: check-cluster
         run: |
-          aws ecs describe-clusters --clusters "my-cluster" || echo "Cluster not found, creating a new one."
+          CLUSTER_STATUS=$(aws ecs describe-clusters --clusters "my-cluster" --query "clusters[0].status" --output text)
+          echo "Cluster status: $CLUSTER_STATUS"
+          echo "CLUSTER_STATUS=$CLUSTER_STATUS" >> $GITHUB_ENV
 
-      # Update ECS Service
+      # Update ECS Service only if the cluster exists
       - name: Update ECS Service
+        if: env.CLUSTER_STATUS == 'ACTIVE'
         run: |
           aws ecs update-service --cluster my-cluster --service cloud-service --force-new-deployment || echo "Failed to update service."
