@@ -8,13 +8,17 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      CLUSTER_NAME: "my-cluster"
+      SERVICE_NAME: "cloud-service"
+      REPO_NAME: "cloud"
 
     steps:
-      # Step 1: Checkout code from the repository
+      # Step 1: Checkout code
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Step 2: Set up JDK 17 for the Java application
+      # Step 2: Set up JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v2
         with:
@@ -22,8 +26,8 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Step 3: Restore Maven Packages
-      - name: Restore Maven Packages
+      # Step 3: Cache Maven Dependencies
+      - name: Cache Maven Dependencies
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
@@ -31,7 +35,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # Step 4: Configure AWS CLI with credentials
+      # Step 4: Configure AWS CLI
       - name: Configure AWS CLI
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -45,16 +49,16 @@ jobs:
         with:
           region: ${{ secrets.AWS_REGION }}
 
-      # Step 6: Create ECR repository if it does not exist
+      # Step 6: Create ECR Repository if it doesn't exist
       - name: Create ECR Repository if not exists
         run: |
-          aws ecr describe-repositories --repository-names "cloud" || \
-          aws ecr create-repository --repository-name "cloud"
+          aws ecr describe-repositories --repository-names "${{ env.REPO_NAME }}" || \
+          aws ecr create-repository --repository-name "${{ env.REPO_NAME }}"
 
       # Step 7: Build Docker image
       - name: Build Docker image
         run: |
-          IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/cloud:latest"
+          IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.REPO_NAME }}:latest"
           docker build -t $IMAGE_URI .
           echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
 
@@ -68,7 +72,7 @@ jobs:
         run: |
           cat <<EOF > ecs-task-definition.json
           {
-            "family": "cloud-service",
+            "family": "${{ env.SERVICE_NAME }}",
             "networkMode": "awsvpc",
             "containerDefinitions": [
               {
@@ -107,64 +111,28 @@ jobs:
           }
           EOF
 
-          # Register the task definition
           aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json
 
-      # Step 10: Create VPC
-      - name: Create VPC
-        id: create-vpc
-        run: |
-          VPC_OUTPUT=$(aws ec2 create-vpc --cidr-block "10.0.0.0/16" --output json)
-          VPC_ID=$(echo $VPC_OUTPUT | jq -r '.Vpc.VpcId')
-          echo "New VPC created with ID: $VPC_ID"
-          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+      # Step 10: Create VPC, Subnet, and Security Group
+      # These steps can be separated out as a one-time setup process for stability.
 
-      # Step 11: Create a new subnet in the new VPC
-      - name: Create Subnet
-        id: create-subnet
-        run: |
-          CIDR_BLOCK="10.0.1.0/24"  # Replace with a valid CIDR block
-          NEW_SUBNET_OUTPUT=$(aws ec2 create-subnet --vpc-id ${{ env.VPC_ID }} --cidr-block $CIDR_BLOCK --availability-zone us-east-1a)
-          NEW_SUBNET_ID=$(echo $NEW_SUBNET_OUTPUT | jq -r '.Subnet.SubnetId')
-          echo "New Subnet created with ID: $NEW_SUBNET_ID"
-          echo "SUBNET_ID=$NEW_SUBNET_ID" >> $GITHUB_ENV
-
-      # Step 12: Create Security Group
-      - name: Create Security Group
-        id: create-sg
-        run: |
-          SG_OUTPUT=$(aws ec2 create-security-group --group-name "cloud-sg" --description "Security group for cloud service" --vpc-id ${{ env.VPC_ID }})
-          SG_ID=$(echo $SG_OUTPUT | jq -r '.GroupId')
-          echo "New Security Group created with ID: $SG_ID"
-          echo "SECURITY_GROUP_ID=$SG_ID" >> $GITHUB_ENV
-
-      # Step 13: Check if ECS Cluster Exists and Create if Necessary
+      # Step 11: Create ECS Cluster if not exists
       - name: Create ECS Cluster if not exists
-        id: create-cluster
         run: |
-          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "my-cluster" --output json 2>/dev/null)
+          CLUSTER_OUTPUT=$(aws ecs describe-clusters --clusters "${{ env.CLUSTER_NAME }}" --output json 2>/dev/null)
           if [ "$(echo $CLUSTER_OUTPUT | jq -r '.clusters | length')" -eq 0 ]; then
-            echo "Cluster does not exist. Creating cluster..."
-            aws ecs create-cluster --cluster-name "my-cluster" --output json
-            echo "Cluster created."
-          else
-            echo "Cluster exists."
+            aws ecs create-cluster --cluster-name "${{ env.CLUSTER_NAME }}" --output json
           fi
 
-      # Step 14: Check if ECS Service Exists
-      - name: Check if ECS Service Exists
-        id: check-service
+      # Step 12: Check if ECS Service Exists and Create if Necessary
+      - name: Check and Create ECS Service if Needed
         run: |
-          SERVICE_OUTPUT=$(aws ecs describe-services --cluster my-cluster --services cloud-service --output json 2>/dev/null)
+          SERVICE_OUTPUT=$(aws ecs describe-services --cluster "${{ env.CLUSTER_NAME }}" --services "${{ env.SERVICE_NAME }}" --output json 2>/dev/null)
           if [ "$(echo $SERVICE_OUTPUT | jq -r '.services | length')" -eq 0 ]; then
-            echo "Service 'cloud-service' does not exist. Creating it..."
-            aws ecs create-service --cluster my-cluster --service-name cloud-service --task-definition cloud-service --desired-count 1 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp='ENABLED'}"
-          else
-            echo "Service 'cloud-service' exists."
+            aws ecs create-service --cluster "${{ env.CLUSTER_NAME }}" --service-name "${{ env.SERVICE_NAME }}" --task-definition "${{ env.SERVICE_NAME }}" --desired-count 1 --launch-type FARGATE --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp='ENABLED'}"
           fi
 
-      # Step 15: Update ECS Service
+      # Step 13: Update ECS Service
       - name: Update ECS Service
         run: |
-          echo "Updating ECS service..."
-          aws ecs update-service --cluster my-cluster --service cloud-service --task-definition cloud-service --force-new-deployment || echo "Failed to update service."
+          aws ecs update-service --cluster "${{ env.CLUSTER_NAME }}" --service "${{ env.SERVICE_NAME }}" --task-definition "${{ env.SERVICE_NAME }}" --force-new-deployment || echo "Failed to update service."
